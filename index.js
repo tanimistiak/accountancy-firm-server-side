@@ -31,7 +31,7 @@ async function run() {
     const employeeCollection = database.collection("employee");
     const publicUserCollection = database.collection("publicUser");
     const chatCollection = database.collection("chats");
-
+    const bookingCollection = database.collection("bookings");
     //chats
     app.post("/chat", async (req, res) => {
       const message = req.body;
@@ -162,6 +162,21 @@ async function run() {
         }
       } catch (error) {
         console.error(error);
+      }
+    });
+
+    // booking api
+    app.post("/booking", async (req, res) => {
+      const body = req.body;
+      try {
+        const result = await bookingCollection.insertOne(body);
+        if (result.acknowledged) {
+          res.status(200).json("We have succesfully got your request");
+        } else {
+          res.json("failed to get your request");
+        }
+      } catch (error) {
+        console.log(error);
       }
     });
   } catch (error) {
