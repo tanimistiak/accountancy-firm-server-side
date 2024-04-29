@@ -179,6 +179,35 @@ async function run() {
         console.log(error);
       }
     });
+    // employee-user session list
+    app.get("/booking/:email", async (req, res) => {
+      const { email } = req.params;
+
+      try {
+        const sessionArray = await bookingCollection.find().toArray();
+        const matchedArray = sessionArray.filter(
+          (session) =>
+            session.userEmail == email || session.employeeEmail == email
+        );
+        if (matchedArray.length > 0) {
+          res.json(matchedArray);
+        } else {
+          res.json([]);
+        }
+      } catch (error) {}
+    });
+    // session find by id
+    app.get("/booking/by-time/:id", async (req, res) => {
+      const { id } = req.params;
+      try {
+        const session = await bookingCollection.findOne({
+          _id: new ObjectId(id),
+        });
+        res.json(session);
+      } catch (error) {
+        console.log(error);
+      }
+    });
   } catch (error) {
     console.error(error);
   }
