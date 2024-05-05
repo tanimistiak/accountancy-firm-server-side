@@ -1,6 +1,7 @@
 const express = require("express");
 const app = express();
 const port = 8080;
+const nodemailer = require("nodemailer");
 // import admin, { credential } from "firebase-admin";
 const admin = require("firebase-admin");
 const cors = require("cors");
@@ -16,6 +17,14 @@ require("dotenv").config();
 app.use(cors());
 app.use(express.json());
 
+//nodemailer
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: "movingwithkoushik@gmail.com",
+    pass: `${process.env.SMTP_PASS}`,
+  },
+});
 //initialize firebase admin
 
 const serviceAccount = require("./serviceAccountKey.json");
@@ -42,6 +51,9 @@ async function run() {
     const publicUserCollection = database.collection("publicUser");
     const chatCollection = database.collection("chats");
     const bookingCollection = database.collection("bookings");
+    const companyCollection = database.collection("company");
+    const taskCollection = database.collection("task");
+    const sentEmailCollection = database.collection("sent-email");
     //chats
     app.post("/chat", async (req, res) => {
       const message = req.body;
@@ -73,11 +85,26 @@ async function run() {
         res.json("no admin");
       }
     });
+    //create-task
+    app.post("/create-task", async (req, res) => {
+      const body = req.body;
+      try {
+        const result = await taskCollection.insertOne(body);
+        if (result.acknowledged) {
+          res.json("Successful");
+        } else {
+          res.json("Failed");
+        }
+      } catch (error) {
+        console.log(error);
+      }
+    });
+
     // employee routes
     app.get("/employee", async (req, res) => {
       const employee = employeeCollection.find();
       const employeeArray = await employee.toArray(employee);
-      console.log(employeeArray);
+
       res.json(employeeArray);
     });
     // employee find by id
@@ -149,7 +176,172 @@ async function run() {
       // Start listing users from the beginning, 1000 at a time.
       listAllUsers();
     });
+    //update firebase user
+    app.put("/employee-update-user", async (req, res) => {
+      const body = req.body;
+      const { uid, email, displayName, password, verified, phone } = body;
 
+      getAuth()
+        .updateUser(uid, {
+          email: email,
+          phoneNumber: phone,
+          emailVerified: verified,
+          password: password?.length > 0 && password,
+          displayName: displayName,
+        })
+        .then(async (userRecord) => {
+          const filter = { email: email };
+          const options = { upsert: false };
+          const updateDoc = {
+            $set: {
+              email: email,
+              phoneNumber: phone,
+              emailVerified: verified,
+              // password: password?.length > 0 && password,
+              displayName: displayName,
+            },
+          };
+          const result = await publicUserCollection.updateOne(
+            filter,
+            updateDoc,
+            options
+          );
+          if (result.modifiedCount > 0) {
+            res.status(200).json("Successful");
+          } else {
+            res.json("Failed");
+          }
+        })
+        .catch((error) => {
+          console.log("Error updating user:", error);
+          res.json(error?.errorInfo?.code);
+        });
+      const filter = { email: email };
+      const options = { upsert: false };
+      const updateDoc = {
+        $set: {
+          email: email,
+          phoneNumber: phone,
+          emailVerified: verified,
+          // password: password?.length > 0 && password,
+          displayName: displayName,
+        },
+      };
+    });
+    // create company
+    app.post("/create-company", async (req, res) => {
+      try {
+        const result = await companyCollection.insertOne(req.body);
+        if (result.acknowledged) {
+          res.json("Successful");
+        } else {
+          res.json("Failed");
+        }
+      } catch (error) {
+        res.json("Failed");
+      }
+    });
+    //get company
+    app.get("/company", async (req, res) => {
+      try {
+        const result = companyCollection.find();
+        const resultArray = await result.toArray();
+        if (resultArray.length > 0) {
+          res.json(resultArray);
+        } else {
+          res.json("No company found");
+        }
+      } catch (error) {
+        res.json(error);
+      }
+    });
+    //send email
+    app.post("/send-email", async (req, res) => {
+      const body = req.body;
+      const foundClients = await sentEmailCollection.find();
+      const foundClientsArray = await foundClients.toArray();
+      if (body.length > 0) {
+        try {
+          body.forEach(
+            ({
+              clientEmail,
+              companyRegistration,
+              companyName,
+              annualReturnDue,
+            }) => {
+              const mailOptions = {
+                from: "movingwithkoushik@gmail.com",
+                to: clientEmail,
+                subject: `Annual return due of your company: ${companyName}`,
+                text: `Your company registered with ${companyRegistration}, annual return due date is 15 days left. Your annual return due date is: ${annualReturnDue}`,
+              };
+              const foundClient = foundClientsArray.filter(
+                (found) =>
+                  found?.clientEmail == clientEmail &&
+                  found?.companyRegistration
+              );
+              if (foundClient.length == 0) {
+                transporter.sendMail(mailOptions, async (error, info) => {
+                  if (error) {
+                    console.error(
+                      `Error sending mail to ${clientEmail}`,
+                      error
+                    );
+                  } else {
+                    console.log(`Email sent to ${clientEmail}`, info.response);
+                    const result = await sentEmailCollection.insertOne({
+                      clientEmail: clientEmail,
+                      companyRegistration: companyRegistration,
+                    });
+                  }
+                });
+              }
+            }
+          );
+        } catch (error) {
+          console.log(error);
+        }
+      }
+    });
+    // task find by email
+    app.get("/employee-task/:email", async (req, res) => {
+      const { email } = req.params;
+      try {
+        const result = await taskCollection.find({ employee: email }).toArray();
+        if (result.length > 0) {
+          res.json(result);
+        } else {
+          res.json("No tasks assigned");
+        }
+      } catch (error) {
+        console.log(error);
+      }
+    });
+    app.put("/employee-task/status/:id", async (req, res) => {
+      const { id } = req.params;
+      const { status } = req.body;
+      try {
+        const filter = { _id: new ObjectId(id) };
+        const options = { upsert: false };
+        const updateDoc = {
+          $set: {
+            status: status,
+          },
+        };
+        const result = await taskCollection.updateOne(
+          filter,
+          updateDoc,
+          options
+        );
+        if (result?.modifiedCount > 0) {
+          res.json("Successful");
+        } else {
+          res.json("Failed");
+        }
+      } catch (error) {
+        console.log(error);
+      }
+    });
     //public-user routes
     app.post("/public-user", async (req, res) => {
       try {
