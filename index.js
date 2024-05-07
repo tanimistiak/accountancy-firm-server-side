@@ -119,6 +119,16 @@ async function run() {
         console.log(error);
       }
     });
+    // employee-find-by-mail
+    app.get("/employee/find-by/:email", async (req, res) => {
+      const { email } = req.params;
+      try {
+        const result = await employeeCollection.findOne({ email: email });
+        res.json(result);
+      } catch (error) {
+        console.log(error);
+      }
+    });
     app.post("/admin/employee", async (req, res) => {
       const body = req.body;
       try {
@@ -145,13 +155,84 @@ async function run() {
     });
     app.post("/employee-create-slot", async (req, res) => {
       const { email, availableDateTimes, createdAt } = req.body;
-      const foundUser = await employeeCollection.findOne({ email: email });
-      const rebuildUser = { ...foundUser, availableDateTimes, createdAt };
-      const replacedUser = await employeeCollection.replaceOne(
-        { email: email },
-        rebuildUser
-      );
-      console.log(replacedUser);
+
+      const foundEmployee = await employeeCollection.findOne({ email: email });
+
+      const filter = { email: email };
+      const options = { upsert: false };
+      let updateDoc;
+      let iterable;
+      try {
+        iterable = foundEmployee?.availableDateTimes?.filter(
+          (availableDateTime) =>
+            availableDateTime.date == availableDateTimes[0].date
+        );
+
+        if (iterable?.length > 0) {
+          const index = foundEmployee?.availableDateTimes.indexOf(iterable[0]);
+          foundEmployee?.availableDateTimes[index].times.push(
+            ...availableDateTimes[0].times
+          );
+          const result = await employeeCollection.replaceOne(
+            filter,
+            foundEmployee
+          );
+          if (result.modifiedCount > 0) {
+            res.json("Successful");
+          } else {
+            res.json("Failed");
+          }
+        } else if (iterable.length == 0) {
+          iterable = foundEmployee?.availableDateTimes;
+
+          iterable.push(...availableDateTimes);
+          updateDoc = {
+            $set: {
+              availableDateTimes: iterable,
+            },
+          };
+          const result = await employeeCollection.updateOne(
+            filter,
+            updateDoc,
+            options
+          );
+          if (result.modifiedCount > 0) {
+            res.json("Successful");
+          } else {
+            res.json("Failed");
+          }
+        }
+      } catch (error) {
+        console.log(error);
+      }
+    });
+    // employee slot update
+    app.put("/employee-slot-update", async (req, res) => {
+      const { email, indexDate, index } = req.body;
+
+      try {
+        const foundEmployee = await employeeCollection.findOne({
+          email: email,
+        });
+
+        if (foundEmployee.email !== "") {
+          foundEmployee.availableDateTimes[indexDate].times.splice(index, 1);
+          if (foundEmployee.availableDateTimes[indexDate].times.length == 0) {
+            foundEmployee.availableDateTimes.splice(indexDate, 1);
+          }
+          const result = await employeeCollection.replaceOne(
+            { email: email },
+            foundEmployee
+          );
+          if (result.modifiedCount > 0) {
+            res.json("Successful");
+          } else {
+            res.json("Failed");
+          }
+        }
+      } catch (error) {
+        console.log(error);
+      }
     });
 
     app.get("/employee-list-users", (req, res) => {
@@ -253,6 +334,39 @@ async function run() {
         }
       } catch (error) {
         res.json(error);
+      }
+    });
+    app.put("/company-update", async (req, res) => {
+      const {
+        id,
+        annualAccountsDone,
+        annualAccountsDue,
+        annualReturnDone,
+        annualReturnDue,
+      } = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const options = { upsert: false };
+      try {
+        const updateDoc = {
+          $set: {
+            annualAccountsDone: annualAccountsDone,
+            annualAccountsDue: annualAccountsDue,
+            annualReturnDone: annualReturnDone,
+            annualReturnDue: annualReturnDue,
+          },
+        };
+        const result = await companyCollection.updateOne(
+          filter,
+          updateDoc,
+          options
+        );
+        if (result.modifiedCount > 0) {
+          res.json("Successful");
+        } else {
+          res.json("Failed");
+        }
+      } catch (error) {
+        console.log(error);
       }
     });
     //send email
@@ -403,6 +517,21 @@ async function run() {
       } catch (error) {
         console.log(error);
       }
+    });
+    //find company by email
+    app.get("/public-user/company/:email", async (req, res) => {
+      const { email } = req.params;
+      try {
+        const result = await companyCollection
+          .find({ clientEmail: email })
+          .toArray();
+
+        if (result.length > 0) {
+          res.json(result);
+        } else {
+          res.json("No company found");
+        }
+      } catch (error) {}
     });
     // employee-user session list
     app.get("/booking/:email", async (req, res) => {
