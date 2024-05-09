@@ -54,6 +54,7 @@ async function run() {
     const companyCollection = database.collection("company");
     const taskCollection = database.collection("task");
     const sentEmailCollection = database.collection("sent-email");
+    const fileCollection = database.collection("file");
     //chats
     app.post("/chat", async (req, res) => {
       const message = req.body;
@@ -134,9 +135,9 @@ async function run() {
       try {
         const response = await employeeCollection.insertOne(body);
         if (response.acknowledged) {
-          res.json("employee added");
+          res.json(true);
         } else {
-          res.json("error");
+          res.json(false);
         }
       } catch (error) {
         console.log(error);
@@ -457,6 +458,54 @@ async function run() {
       }
     });
     //public-user routes
+    // client upload file
+    app.post("/upload-file", async (req, res) => {
+      try {
+        const result = await fileCollection.insertOne(req.body);
+        if (result.acknowledged) {
+          res.json("Successful");
+        } else {
+          res.json("Failed");
+        }
+      } catch (error) {
+        console.log(error);
+      }
+    });
+
+    // file by email
+    app.get("/file/:email", async (req, res) => {
+      const { email } = req.params;
+      try {
+        const result = await fileCollection
+          .find({ uploadedBy: email })
+          .toArray();
+        if (result.length > 0) {
+          res.json(result);
+        } else {
+          res.json([]);
+        }
+      } catch (error) {
+        console.log(error);
+      }
+    });
+    // file delete by location
+    app.post("/file/delete", async (req, res) => {
+      console.log(req);
+      const { location } = req.body;
+      console.log(location);
+      try {
+        const result = await fileCollection.deleteOne({ location: location });
+
+        if (result.deletedCount > 0) {
+          res.json("Successful");
+        } else {
+          res.json("Failed");
+        }
+      } catch (error) {
+        console.log(error);
+      }
+    });
+
     app.post("/public-user", async (req, res) => {
       try {
         const response = await publicUserCollection.insertOne(req.body);
@@ -492,10 +541,11 @@ async function run() {
     });
     app.get("/public-user/:email", async (req, res) => {
       const { email } = req.params;
+
       try {
         const response = await publicUserCollection.findOne({ email: email });
         if (response?.email) {
-          res.json(response.email);
+          res.json(response);
         } else {
           res.json(false);
         }
@@ -518,6 +568,15 @@ async function run() {
         console.log(error);
       }
     });
+    // get all bookings
+    app.get("/booking", async (req, res) => {
+      try {
+        const result = await bookingCollection.find().toArray();
+        res.json(result);
+      } catch (error) {
+        console.log(error);
+      }
+    });
     //find company by email
     app.get("/public-user/company/:email", async (req, res) => {
       const { email } = req.params;
@@ -529,7 +588,7 @@ async function run() {
         if (result.length > 0) {
           res.json(result);
         } else {
-          res.json("No company found");
+          res.json([]);
         }
       } catch (error) {}
     });
